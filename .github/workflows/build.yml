@@ -97,9 +97,11 @@ jobs:
             "${override_args[@]}"
           artifact=$(basename "$(ls dist/*.npk)")
           sha256=$(cat "dist/$artifact.sha256")
-          cat "dist/$artifact.env" >> "$GITHUB_OUTPUT"
-          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
-          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          {
+            cat "dist/$artifact.env"
+            echo "artifact=$artifact"
+            echo "sha256=$sha256"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate external manifest
         run: |
