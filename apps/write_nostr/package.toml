@@ -1,0 +1,47 @@
+# Canonical native manifest for write_nostr (NostrHost `_nh` format).
+#
+# This file is embedded in the .npk at .npack/nostrhost/manifest.json and is
+# the source of truth the resource engine plans from. It contains no build
+# recipe (see app.toml) and no [source.main]: the payload ships inside the
+# artifact and is applied by the engine's payload.sync provider.
+#
+# write_nostr is a static SvelteKit SPA. It is served straight from its build
+# output by Caddy's file_server, with no service resource — the same shape
+# nh-package-template uses for build-from-source static apps.
+
+[app]
+id = "write_nostr"
+version = "0.4.4"
+
+[directories.install]
+path = "/var/www/write_nostr"
+mode = 0o755
+
+[web]
+# No domain here on purpose: [web].domain is an install-time parameter
+# (nostrhost app install-npk --domain ...), not part of the signed content.
+# full_domain: write_nostr is built with root-absolute asset paths and serves
+# its own client-side routes from the domain root, so it cannot share a
+# domain with a subpath app.
+path = "/"
+full_domain = true
+file_root = "/var/www/write_nostr"
+auth = "nostrhost"
+https = "automatic"
+
+[permissions.main]
+url = "/"
+allowed = ["all_users"]
+auth_request = true
+
+[health]
+type = "http"
+path = "/"
+timeout = 10
+retries = 2
+
+[backup]
+# Stateless build output: a restore just re-fetches source.main. Nothing
+# user-generated lives under directories.install.
+paths = []
+database = false

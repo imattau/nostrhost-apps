@@ -1,0 +1,12 @@
+# Build outputs
+*.npk
+*.npk.sha256
+*.npk.env
+node_modules/
+build/
+dist/
+.nostrhost-yunohost/
+__pycache__/
+
+# Editor/OS
+.DS_Store

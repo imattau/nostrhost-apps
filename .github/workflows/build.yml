@@ -1,0 +1,181 @@
+name: Build and publish npk artifacts
+
+# Matrix over apps/* in this repo. Each app's build.sh runs off-target (here,
+# in CI) and produces a deterministic .npk + its SHA-256. On a protected
+# release run, the artifact and its publisher-signed kind-9900/NIP-94 events
+# are published to Nostr and Blossom with `npack publish`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Override the pinned upstream ref for all apps (tag or commit)
+        required: false
+        default: ""
+      app:
+        description: Build only this app (apps/<name>); empty builds all
+        required: false
+        default: ""
+  push:
+    tags:
+      - "apps/*/v*"
+
+permissions:
+  contents: write
+
+env:
+  NPACK_REF: v0.4.0 # npack release the fork pins; see nostrhost forks/npack
+
+jobs:
+  list:
+    name: List apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.list.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        shell: bash
+        run: echo "apps=$(scripts/list-apps.py --app '${{ inputs.app }}' --tag '${{ github.ref }}')" >> "$GITHUB_OUTPUT"
+
+  build-npack:
+    name: Build pinned npack binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check out npack at pinned ref
+        run: git clone --quiet --depth 1 --branch "${{ env.NPACK_REF }}" https://github.com/imattau/npack.git npack-src
+      - name: Build npack
+        run: cargo build --release --manifest-path npack-src/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npack-bin
+          path: npack-src/target/release/npack
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.app }}
+    needs: [list, build-npack]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.list.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: npack-bin
+          path: /tmp/npack-bin
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build .npk
+        id: build
+        env:
+          NPACK_BIN: /tmp/npack-bin/npack
+          NOSTR_PUBLISHER: ${{ vars.NOSTR_PUBLISHER }}
+        run: |
+          set -euo pipefail
+          chmod +x /tmp/npack-bin/npack
+          mkdir -p dist
+          override_args=()
+          if [ -n "${{ inputs.upstream_ref }}" ]; then
+            override_args+=(--upstream-ref "${{ inputs.upstream_ref }}")
+          fi
+          scripts/build-app.sh "apps/${{ matrix.app }}" \
+            --output "dist/${{ matrix.app }}.npk" \
+            "${override_args[@]}"
+          artifact=$(basename "$(ls dist/*.npk)")
+          sha256=$(cat "dist/$artifact.sha256")
+          cat "dist/$artifact.env" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Generate external manifest
+        run: |
+          /tmp/npack-bin/npack manifest "dist/${{ steps.build.outputs.artifact }}" \
+            --output "dist/${{ matrix.app }}.manifest.json"
+          sha256sum "dist/${{ steps.build.outputs.artifact }}" > dist/SHA256SUMS
+
+      - name: Verify artifact
+        run: |
+          /tmp/npack-bin/npack verify "dist/${{ steps.build.outputs.artifact }}"
+          /tmp/npack-bin/npack verify "dist/${{ matrix.app }}.manifest.json"
+
+      - name: Upload build bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.app }}
+          path: dist
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tag-driven)
+        if: startsWith(github.ref, 'refs/tags/apps/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          body: |
+            Built from ${{ matrix.app }}@${{ steps.build.outputs.version }}.
+
+            artifact: `${{ steps.build.outputs.artifact }}`
+            sha256: `${{ steps.build.outputs.sha256 }}`
+
+  publish:
+    name: Publish ${{ matrix.app }} to Nostr
+    needs: [list, build]
+    if: startsWith(github.ref, 'refs/tags/apps/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.list.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check out npack at pinned ref
+        run: git clone --quiet --depth 1 --branch "${{ env.NPACK_REF }}" https://github.com/imattau/npack.git npack-src
+      - name: Build npack
+        run: cargo build --release --manifest-path npack-src/Cargo.toml
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ matrix.app }}
+          path: dist
+      - name: Publish artifact and events
+        env:
+          NPACK_BIN: ${{ github.workspace }}/npack-src/target/release/npack
+          NOSTR_SECRET_KEY: ${{ secrets.NOSTR_SECRET_KEY }}
+          NOSTR_RELAYS: ${{ vars.NOSTR_RELAYS }}
+          NOSTR_BLOSSOM_SERVERS: ${{ vars.NOSTR_BLOSSOM_SERVERS }}
+        run: |
+          set -euo pipefail
+          test -n "$NOSTR_SECRET_KEY" || { echo "missing NOSTR_SECRET_KEY" >&2; exit 1; }
+          test -n "$NOSTR_RELAYS" || { echo "missing NOSTR_RELAYS" >&2; exit 1; }
+          test -n "$NOSTR_BLOSSOM_SERVERS" || { echo "missing NOSTR_BLOSSOM_SERVERS" >&2; exit 1; }
+          manifest=$(find dist -maxdepth 1 -name "${{ matrix.app }}.manifest.json" -print -quit)
+          test -n "$manifest"
+          relay_args=()
+          while IFS= read -r relay; do
+            [[ -z "${relay//[[:space:]]/}" ]] && continue
+            relay_args+=(--relay "$relay")
+          done <<< "$NOSTR_RELAYS"
+          server_args=()
+          while IFS= read -r server; do
+            [[ -z "${server//[[:space:]]/}" ]] && continue
+            server_args+=(--server "$server")
+          done <<< "$NOSTR_BLOSSOM_SERVERS"
+          test "${#relay_args[@]}" -gt 0
+          test "${#server_args[@]}" -gt 0
+          "$NPACK_BIN" publish "$manifest" \
+            --secret-key "$NOSTR_SECRET_KEY" \
+            "${relay_args[@]}" \
+            "${server_args[@]}"
+      - name: Confirm publication boundary
+        run: echo "signed artifact and release events submitted to the configured relays."

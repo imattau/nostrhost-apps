@@ -1,0 +1,30 @@
+# Build recipe for the write_nostr native package (npack distribution).
+#
+# This file drives scripts/build-app.sh: it names the pinned upstream ref,
+# the build commands, and how the build output lands in the .npk payload at
+# host-relative paths. It is NOT part of the installed package's signed
+# content — package.toml is the canonical native manifest that gets embedded
+# in the artifact.
+
+[upstream]
+repo = "https://github.com/imattau/write_nostr.git"
+# Pinned tag/commit, never a branch: the artifact must be reproducible.
+ref = "v0.4.4"
+
+[build]
+node = "22"
+install = "ci --ignore-scripts"
+build = "run build"
+output_dir = "build"
+
+[payload]
+# The build output directory's *contents* are copied to var/www/<id>/ inside
+# the .npk, so index.html ends up at /var/www/write_nostr/index.html — the
+# same root [web].file_root and [directories.install].path point at.
+root = "var/www/write_nostr"
+
+[publish]
+# The SPA is platform-independent (static assets served by Caddy), so the
+# release is usable on any os/arch.
+os = "any"
+arch = "any"

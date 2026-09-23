@@ -1,0 +1,113 @@
+name: Package security checks (_nh, npack distribution)
+
+# Matrix over apps/*. Validates each package.toml against the native schema,
+# produces its plan, verifies the upstream ref is pinned, and runs the same
+# static scans (Gitleaks, Trivy, actionlint, ShellCheck) as the _nh template.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    name: List apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.list.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        shell: bash
+        run: echo "apps=$(scripts/list-apps.py)" >> "$GITHUB_OUTPUT"
+
+  native-validate:
+    name: Validate ${{ matrix.app }}
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.list.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out nostrhost-package CLI
+        uses: actions/checkout@v4
+        with:
+          repository: imattau/nostrhost-yunohost
+          ref: nostrhost
+          path: .nostrhost-yunohost
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CLI dependencies (pinned to Debian 12 / Bookworm versions)
+        run: python -m pip install "typer==0.7.0" "click==8.1.7" "pydantic==1.10.14" "PyYAML==6.0.2"
+
+      - name: nostrhost-package validate
+        id: validate
+        continue-on-error: true
+        env:
+          PYTHONPATH: .nostrhost-yunohost/src
+        run: python -m nostrhost.package_authoring validate apps/${{ matrix.app }}/package.toml --json | tee validate.json
+
+      - name: nostrhost-package plan
+        id: plan
+        if: steps.validate.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: .nostrhost-yunohost/src
+        run: python -m nostrhost.package_authoring plan apps/${{ matrix.app }}/package.toml --json | tee plan.json
+
+      - name: Pinned upstream ref + SemVer version
+        id: pinned
+        if: always()
+        continue-on-error: true
+        run: python3 scripts/check-app-pinned.py apps/${{ matrix.app }}
+
+      - name: Upload validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-validate-${{ matrix.app }}
+          path: |
+            validate.json
+            plan.json
+          if-no-files-found: ignore
+
+      - name: Fail if any check did not pass
+        if: steps.validate.outcome != 'success' || steps.plan.outcome != 'success' || steps.pinned.outcome != 'success'
+        run: exit 1
+
+  static-scan:
+    name: Static scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: .
+          ignore_paths: .nostrhost-yunohost
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: GitHub Actions workflow scan
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" --workdir /repo rhysd/actionlint:1.7.12 -color
