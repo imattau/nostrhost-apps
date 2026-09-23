@@ -86,6 +86,25 @@ OUTPUT_DIR="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["build"]["
 OS_NAME="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("publish",{}).get("os","any"))' <<<"$INFO")"
 ARCH="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("publish",{}).get("arch","any"))' <<<"$INFO")"
 
+# The build recipe pins the Node major; refuse to build with a mismatched
+# runtime so the artifact stays reproducible against app.toml.
+NODE_RUNNING=""
+if command -v node >/dev/null 2>&1; then
+    NODE_RUNNING="$(node --version | sed 's/^v//')"
+fi
+if [ -z "$NODE_RUNNING" ]; then
+    echo "build-app.sh: node is required (app pins node $NODE_VERSION)" >&2
+    exit 1
+fi
+case "$NODE_RUNNING" in
+    "$NODE_VERSION" | "$NODE_VERSION".*) ;;
+    *)
+        echo "build-app.sh: app pins node $NODE_VERSION but running node is $NODE_RUNNING" >&2
+        exit 1
+        ;;
+esac
+echo "==> Node $NODE_RUNNING (app.toml pins $NODE_VERSION)"
+
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 

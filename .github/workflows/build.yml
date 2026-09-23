@@ -70,10 +70,14 @@ jobs:
           name: npack-bin
           path: /tmp/npack-bin
 
+      - name: Resolve app Node pin
+        id: appnode
+        run: python3 scripts/app-info.py "apps/${{ matrix.app }}" > /tmp/app-info.json && echo "version=$(python3 -c 'import json,sys; print(json.load(open("/tmp/app-info.json"))["build"]["node"])')" >> "$GITHUB_OUTPUT"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ steps.appnode.outputs.version }}
 
       - name: Build .npk
         id: build
