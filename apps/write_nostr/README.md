@@ -62,10 +62,11 @@ nostrhost app install-npk <publisher>/write_nostr \
 ```
 
 `[web].domain` is supplied at install time, never hardcoded in the manifest.
-Note: the native `[web]` `file_root` route currently serves the static SPA
-with plain `file_server` — client-side deep links (e.g. a shared
-`/article/…` URL) are a known NostrHost platform gap and may 404 on refresh;
-in-app navigation works normally.
+write_nostr declares `[web].spa_fallback = true`, so Caddy serves real files
+and falls back to `index.html` for client-side routes — a shared
+`/article/…` deep link survives a refresh instead of 404ing. (SPA fallback is
+the default for `file_root` apps; it can be disabled with
+`spa_fallback = false` for a genuinely static site.)
 
 ## Version bumps
 

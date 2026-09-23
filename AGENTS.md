@@ -62,12 +62,11 @@ it and assembles the payload, and the resulting `.npk` embeds the canonical
 - A manifest's `[app].version` must be valid SemVer (npack rejects
   non-SemVer). Use a plain version like `0.4.4`, or a SemVer-compatible
   suffix.
-- Static SPAs are served via `[web].file_root` → Caddy `file_server`. The
-  native route currently does **not** add SPA `try_files` fallback, so
-  client-side deep links may 404 on refresh; document this per app rather
-  than silently adding a service to paper over it. (A `[service]` resource
-  that runs a fallback-capable server is a legitimate alternative, but
-  decide deliberately and match the platform's current capability.)
+- Static SPAs are served via `[web].file_root` → Caddy `file_server` with
+  SPA fallback to `index.html` by default (`[web].spa_fallback`, default
+  true for `file_root` apps): client-side deep links survive a refresh. Set
+  `spa_fallback = false` only for a genuinely static site that wants real
+  404s. Do not add a `[service]` resource just to paper over SPA routing.
 - The embedded manifest digest binds the plan to the artifact: never edit
   `package.toml` after building without rebuilding the `.npk`.
 

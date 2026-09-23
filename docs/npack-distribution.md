@@ -62,16 +62,17 @@ write_nostr is a static SvelteKit SPA. It is served straight from its build
 output by Caddy `file_server` (`[web].file_root`), the same shape
 `nh-package-template` uses — no service resource, no install-time build.
 
-Two platform caveats to keep in mind (documented per app where relevant):
+One platform note: the native `[web]` `file_root` route now applies the same
+SPA `try_files` fallback the portal uses (`_spa_route_handle` /
+`_spa_file_server_routes` in `caddy_admin.py`), so client-side routes fall
+back to `index.html` by default (`[web].spa_fallback`, default true for
+`file_root` apps). Set `spa_fallback = false` for a genuinely static site
+that wants real 404s.
 
-- The native `[web]` route builds a plain `file_server` handler; SPA
-  `try_files` fallback is wired for the portal/SSO routes
-  (`_spa_route_handle` in `caddy_admin.py`) but not for native `file_root`
-  apps. Client-side deep links can 404 on refresh until the platform adds
-  fallback for native routes.
-- `payload.sync` runs last in the plan (it depends on the manifest
-  operation), so a health check that runs at apply time sees the payload in
-  place — ordering is the platform's concern, not the package's.
+Another platform note (unchanged): `payload.sync` runs last in the plan (it
+depends on the manifest operation), so a health check that runs at apply
+time sees the payload in place — ordering is the platform's concern, not the
+package's.
 
 ## Versioning and trust
 

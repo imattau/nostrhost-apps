@@ -7,7 +7,10 @@
 #
 # write_nostr is a static SvelteKit SPA. It is served straight from its build
 # output by Caddy's file_server, with no service resource — the same shape
-# nh-package-template uses for build-from-source static apps.
+# nh-package-template uses for build-from-source static apps. spa_fallback
+# keeps client-side routes (e.g. a shared /article/… deep link) working on
+# refresh by falling back to index.html; it is the default for file_root apps
+# and declared explicitly here.
 
 [app]
 id = "write_nostr"
@@ -26,6 +29,7 @@ mode = 0o755
 path = "/"
 full_domain = true
 file_root = "/var/www/write_nostr"
+spa_fallback = true
 auth = "nostrhost"
 https = "automatic"
 
