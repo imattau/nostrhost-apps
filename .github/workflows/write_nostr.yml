@@ -1,0 +1,41 @@
+name: write_nostr
+
+# Per-app release workflow for apps/write_nostr. Calls the shared build core
+# (.github/workflows/build.yml) so this app's releases, path builds and
+# manual dispatches run independently of every other app:
+#
+#   - tag apps/write_nostr/v* -> build, publish to Nostr/Blossom, GitHub Release
+#   - push to main touching write_nostr or the shared build chain
+#                           -> build only (publish is tag/dispatch-gated in the core)
+#   - manual dispatch        -> build + publish this app (upstream_ref override)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "apps/write_nostr/v*"
+    # Path filters are not evaluated for tag pushes (GitHub docs), so the
+    # release trigger is unaffected by this list.
+    paths:
+      - "apps/write_nostr/**"
+      - "scripts/**"
+      - ".github/workflows/build.yml"
+      - ".github/workflows/write_nostr.yml"
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Override the pinned upstream ref (tag or commit)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    uses: ./.github/workflows/build.yml
+    with:
+      app: write_nostr
+      upstream_ref: ${{ inputs.upstream_ref }}
+    secrets: inherit

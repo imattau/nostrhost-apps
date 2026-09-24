@@ -4,8 +4,27 @@ name: Build and publish npk artifacts
 # in CI) and produces a deterministic .npk + its SHA-256. On a protected
 # release run, the artifact and its publisher-signed kind-9900/NIP-94 events
 # are published to Nostr and Blossom with `npack publish`.
+#
+# Reusable core: the per-app workflows (apps/<name>.yml -> .github/workflows/
+# <name>.yml) call this via workflow_call with a fixed app filter, so each
+# app's releases, path builds and dispatches are independent. This file has
+# no tag trigger of its own -- a new app gets releases only after it gets a
+# wrapper workflow. Dispatching it directly still builds (and publishes for
+# dispatch runs) one app or all of them.
 
 on:
+  workflow_call:
+    inputs:
+      app:
+        description: Build only this app (apps/<name>); empty builds all
+        required: false
+        default: ""
+        type: string
+      upstream_ref:
+        description: Override the pinned upstream ref for all apps (tag or commit)
+        required: false
+        default: ""
+        type: string
   workflow_dispatch:
     inputs:
       upstream_ref:
@@ -16,9 +35,6 @@ on:
         description: Build only this app (apps/<name>); empty builds all
         required: false
         default: ""
-  push:
-    tags:
-      - "apps/*/v*"
 
 permissions:
   contents: write
