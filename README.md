@@ -15,6 +15,7 @@ This is the multi-app, npack-distributed sibling of the per-app
 
 | App | Version | Upstream |
 | --- | --- | --- |
+| [nostr_blog](apps/nostr_blog/) | 0.2.0 | <https://github.com/imattau/nostr-blog> |
 | [write_nostr](apps/write_nostr/) | 0.4.4 | <https://github.com/imattau/write_nostr> |
 
 ## How it works
