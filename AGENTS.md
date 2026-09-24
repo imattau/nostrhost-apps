@@ -51,8 +51,11 @@ it and assembles the payload, and the resulting `.npk` embeds the canonical
    Then `npack verify`, `npack manifest`, and a store install
    (`npack install --store /tmp/store --allow-capability …`) to confirm the
    staged payload + embedded manifest.
-6. `.github/workflows/build.yml` and `security.yml` are a matrix over
-   `apps/*`; a new app subfolder is picked up automatically.
+6. `.github/workflows/security.yml` is a matrix over `apps/*` and picks up
+   a new app subfolder automatically. Releases do not: `build.yml` is a
+   reusable core with no tag trigger, so a new app gets releases only after
+   you copy an existing per-app wrapper (`.github/workflows/<name>.yml`)
+   and adjust its name, paths and `app` filter.
 
 ## Behavior notes
 

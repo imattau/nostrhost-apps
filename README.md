@@ -73,9 +73,22 @@ hybrid staged store flow and the native post-install model.
 
 ## CI
 
-- `.github/workflows/build.yml` — matrix over `apps/*`; builds each `.npk`,
-  attaches it to a GitHub Release, and (on a protected `release` run) publishes
-  it to Nostr/Blossom with `npack publish`.
+- `.github/workflows/build.yml` — reusable build core (called with an `app`
+  filter); builds each `.npk`, and on a tag- or dispatch-driven release
+  attaches it to a GitHub Release and publishes it to Nostr/Blossom with
+  `npack publish`. It has no tag trigger of its own and can also be
+  dispatched directly to build/publish one app or all of them.
+- `.github/workflows/<name>.yml` (one per app, e.g. `nostr_blog.yml`) — thin
+  wrapper calling the core with that app's filter, so releases, run history
+  and status checks are independent per app. Each wrapper owns its app's
+  triggers:
+  - tag `apps/<name>/v*` → full release (build, publish, GitHub Release);
+  - push to `main` touching `apps/<name>/**`, `scripts/**`, or the build
+    chain → build-only validation (publish stays tag/dispatch-gated);
+  - manual dispatch → build + publish just that app (optional
+    `upstream_ref` override).
+  A new app releases only after copying an existing wrapper and adjusting
+  its name/paths/filter.
 - `.github/workflows/security.yml` — matrix over `apps/*`; validates and plans
   each `package.toml`, re-verifies the pinned artifact hash, and runs the same
   static scans (Gitleaks, Trivy, actionlint, ShellCheck) as the `_nh` template.
@@ -84,4 +97,6 @@ Repository configuration mirrors the npack release workflow:
 
 - Variable `NOSTR_PUBLISHER` — the dedicated publisher public key.
 - Variables `NOSTR_RELAYS`, `NOSTR_BLOSSOM_SERVERS` — one URL per line.
-- Secret `NOSTR_SECRET_KEY` in the protected `release` environment.
+- Secret `NOSTR_SECRET_KEY` at repository level; the wrappers pass it to the
+  core with `secrets: inherit`, and the core's publish job runs under the
+  `release` environment.
