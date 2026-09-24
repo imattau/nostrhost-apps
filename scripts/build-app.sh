@@ -85,6 +85,7 @@ BUILD_ARGS="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["build"]["
 OUTPUT_DIR="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["build"]["output_dir"])' <<<"$INFO")"
 OS_NAME="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("publish",{}).get("os","any"))' <<<"$INFO")"
 ARCH="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("publish",{}).get("arch","any"))' <<<"$INFO")"
+BUILD_ENV="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["build"].get("env", {})))' <<<"$INFO")"
 
 # The build recipe pins the Node major; refuse to build with a mismatched
 # runtime so the artifact stays reproducible against app.toml.
@@ -107,6 +108,19 @@ echo "==> Node $NODE_RUNNING (app.toml pins $NODE_VERSION)"
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
+
+# Export [build].env into the npm steps (e.g. NOSTRBLOG_SITEMAP=0 skips the
+# sitemap integration whose absolute URLs need an install-time domain).
+if [ "$BUILD_ENV" != "{}" ]; then
+    python3 -c 'import json, sys, shlex
+for key, value in json.load(sys.stdin)["build"]["env"].items():
+    print(f"export {key}={shlex.quote(str(value))}")' <<<"$INFO" > "$workdir/build.env"
+    set -a
+    # shellcheck source=/dev/null
+    . "$workdir/build.env"
+    set +a
+    echo "==> Build env: $(python3 -c 'import json,sys; print(", ".join(sorted(json.load(sys.stdin)["build"]["env"])))' <<<"$INFO")"
+fi
 
 echo "==> Cloning ${UPSTREAM_REPO}@${UPSTREAM_REF_OVERRIDE:-$UPSTREAM_REF}"
 UPSTREAM_REF="${UPSTREAM_REF_OVERRIDE:-$UPSTREAM_REF}"
@@ -135,13 +149,29 @@ fi
 popd >/dev/null
 
 echo "==> Assembling payload at host-relative paths"
-# The build output's *contents* are copied to var/www/<id>/ inside the .npk
-# (index.html lands at /var/www/<id>/index.html), matching package.toml's
-# [web].file_root and [directories.install].path.
+# Host-relative destination inside the .npk (package.toml's
+# [directories.install].path). With [payload].include, the named entries are
+# copied from the build tree by name (dist, package.json, node_modules, ...);
+# without it the build output's *contents* are copied (legacy static apps:
+# index.html lands at var/www/<id>/index.html).
 PAYLOAD_ROOT="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["root"])' <<<"$INFO")"
+INCLUDE="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["payload"].get("include", [])))' <<<"$INFO")"
 PAYLOAD_DIR="$workdir/payload/$PAYLOAD_ROOT"
 mkdir -p "$PAYLOAD_DIR"
-cp -a "$workdir/src/$OUTPUT_DIR/." "$PAYLOAD_DIR/"
+if [ "$INCLUDE" != "[]" ]; then
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        if [ ! -e "$workdir/src/$entry" ]; then
+            echo "build-app.sh: [payload].include entry not found in build tree: $entry" >&2
+            exit 1
+        fi
+        cp -a "$workdir/src/$entry" "$PAYLOAD_DIR/"
+    done < <(python3 -c 'import json,sys
+for entry in json.load(sys.stdin):
+    print(entry)' <<<"$INCLUDE")
+else
+    cp -a "$workdir/src/$OUTPUT_DIR/." "$PAYLOAD_DIR/"
+fi
 
 echo "==> Building .npk via npack (init + pack)"
 # npack init writes .npack/manifest.json and must run before the native

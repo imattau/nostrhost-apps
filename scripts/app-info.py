@@ -9,21 +9,28 @@ and prints a single JSON object the build script can consume:
       "id": "write_nostr",
       "version": "0.4.4",
       "upstream": {"repo": "...", "ref": "v0.4.4"},
-      "build": {"node": "22", "install": "...", "build": "...", "output_dir": "build"},
-      "payload": {"build": "var/www/write_nostr/build", ...}
+      "build": {"node": "22", "install": "...", "build": "...",
+                "output_dir": "build", "env": {"KEY": "value"}},
+      "payload": {"root": "var/www/write_nostr", "include": ["dist", ...]}
     }
 
-``payload`` maps a source path inside the upstream checkout (key) to a
-host-relative destination inside the .npk archive (value). The destination
-must stay under the host root the resource engine installs to.
+``payload`` carries the host-relative destination root (value of ``root``).
+When ``include`` lists entries, the build script copies exactly those paths
+(from the upstream checkout, by name) into the payload root; when ``include``
+is absent, the *contents* of ``build.output_dir`` are copied instead (the
+legacy static-app behaviour). ``build.env`` is exported into the npm
+install/build steps (e.g. NOSTRBLOG_SITEMAP=0 to skip the sitemap).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tomllib
 from pathlib import Path
+
+_ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def main() -> int:
@@ -44,6 +51,31 @@ def main() -> int:
     with package_toml.open("rb") as fh:
         pkg = tomllib.load(fh)
 
+    build = app.get("build", {})
+    env = build.get("env", {})
+    if not isinstance(env, dict) or any(
+        not isinstance(key, str) or not _ENV_KEY.match(key)
+        or not isinstance(value, (str, int, float, bool))
+        for key, value in env.items()
+    ):
+        print(f"app.toml [build.env] must map shell-safe keys to scalar values in {app_dir}", file=sys.stderr)
+        return 2
+    payload = app.get("payload", {})
+    if not payload:
+        print(f"app.toml has no [payload] mapping in {app_dir}", file=sys.stderr)
+        return 2
+    if "root" not in payload:
+        print(f"app.toml [payload] is missing root in {app_dir}", file=sys.stderr)
+        return 2
+    include = payload.get("include", [])
+    if not isinstance(include, list) or any(
+        not isinstance(entry, str) or not entry or entry.startswith("/")
+        or ".." in Path(entry).parts
+        for entry in include
+    ):
+        print(f"app.toml [payload].include must be a list of relative paths in {app_dir}", file=sys.stderr)
+        return 2
+
     info = {
         "id": app.get("app", {}).get("id", pkg["app"]["id"]),
         "version": pkg["app"]["version"],
@@ -52,20 +84,18 @@ def main() -> int:
             "ref": app["upstream"]["ref"],
         },
         "build": {
-            "node": app.get("build", {}).get("node", "22"),
-            "install": app.get("build", {}).get("install", "ci --ignore-scripts"),
-            "build": app.get("build", {}).get("build", "run build"),
-            "output_dir": app.get("build", {}).get("output_dir", "build"),
+            "node": build.get("node", "22"),
+            "install": build.get("install", "ci --ignore-scripts"),
+            "build": build.get("build", "run build"),
+            "output_dir": build.get("output_dir", "build"),
+            "env": env,
         },
-        "payload": app.get("payload", {}),
+        "payload": payload,
         "publish": {
             "os": app.get("publish", {}).get("os", "any"),
             "arch": app.get("publish", {}).get("arch", "any"),
         },
     }
-    if not info["payload"]:
-        print(f"app.toml has no [payload] mapping in {app_dir}", file=sys.stderr)
-        return 2
     json.dump(info, sys.stdout, indent=2, sort_keys=True)
     print()
     return 0
