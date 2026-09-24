@@ -1,0 +1,39 @@
+# Build recipe for the nostr_blog native package (npack distribution).
+#
+# This file drives scripts/build-app.sh: it names the pinned upstream ref,
+# the build commands, and how the build output lands in the .npk payload at
+# host-relative paths. It is NOT part of the installed package's signed
+# content — package.toml is the canonical native manifest that gets embedded
+# in the artifact.
+
+[upstream]
+repo = "https://github.com/imattau/nostr-blog.git"
+# Pinned tag/commit, never a branch: the artifact must be reproducible.
+ref = "v0.2.0"
+
+[build]
+node = "22"
+install = "ci --ignore-scripts"
+build = "run build"
+output_dir = "dist"
+
+[build.env]
+# Skip @astrojs/sitemap: it bakes absolute URLs from the build-time `site`
+# placeholder, and NostrHost builds are domain-agnostic. Page canonical/og/
+# JSON-LD URLs come from the request origin at render time instead.
+NOSTRBLOG_SITEMAP = "0"
+
+[payload]
+root = "var/www/nostr_blog"
+# The SSR server needs the whole runtime tree, not just dist/: server chunks
+# import bare packages (astro/app/node, clsx, devalue, marked, nostr-tools,
+# ws, zod, ...) resolved from node_modules at run time. package.json rides
+# along for npm audit provenance; dist/ carries the built client + server.
+include = ["dist", "package.json", "node_modules"]
+
+[publish]
+# node_modules contains linux-x64 native bits (optional sharp/@img
+# binaries), so the release is pinned to the platform CI builds for -
+# never "any".
+os = "linux"
+arch = "x86_64"

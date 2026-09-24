@@ -1,0 +1,116 @@
+# Canonical native manifest for nostr_blog (NostrHost `_nh` format).
+#
+# This file is embedded in the .npk at .npack/nostrhost/manifest.json and is
+# the source of truth the resource engine plans from. It contains no build
+# recipe (see app.toml) and no [source.main]: the payload ships inside the
+# artifact and is applied by the engine's payload.sync provider.
+#
+# nostr_blog is the Astro SSR blog (upstream imattau/nostr-blog) running
+# `node dist/server/entry.mjs` behind a Caddy reverse_proxy route - the same
+# shape as the YunoHost package, but domain-agnostic: [web].domain is an
+# install-time parameter, and canonical/og/JSON-LD URLs come from the
+# request origin at render time (the build skips @astrojs/sitemap).
+#
+# The public site serves the [web].auth = "none" route (ynh parity: the ynh
+# install exposes the site to visitors). Post *writing* goes through the
+# app's own /api/setup bearer token - nostr_blog does not use the NostrHost
+# member auth gate.
+
+[app]
+id = "nostr_blog"
+version = "0.2.0"
+
+[user]
+name = "nostr_blog"
+system = true
+
+[directories.install]
+path = "/var/www/nostr_blog"
+mode = 0o755
+
+[directories.data]
+# Site state (config.json, posts, ...) lives outside the read-only install
+# tree; backup.register keeps it in Restic.
+path = "/var/lib/nostr_blog"
+backup = true
+
+[runtime]
+# Host-provided Node 22 (nostr-tools needs the native WebSocket global from
+# Node 22). The provider only verifies `node --version` - install Node on
+# the host before `install-npk` (the engine never installs runtimes).
+type = "node"
+version = "22"
+
+[service]
+# Bare `node` via sh -c: resolves through systemd's default PATH
+# (/usr/local/bin, /usr/bin, ...) so the unit works whether Node was
+# unpacked to /usr/local or installed from a distro package. service.exec
+# itself must be an absolute path (validate_package).
+exec = "/bin/sh -c \"node /var/www/nostr_blog/dist/server/entry.mjs\""
+working_directory = "/var/www/nostr_blog"
+restart = "always"
+
+[service.environment]
+HOST = "127.0.0.1"
+NOSTRBLOG_DATA_DIR = "/var/lib/nostr_blog"
+NODE_ENV = "production"
+PORT = "4321"
+
+[service.security]
+# ProtectSystem=strict makes /var read-only for the unit; config.json and
+# the app's posts/cache live under the data dir, so re-open exactly that.
+read_write_paths = ["/var/lib/nostr_blog"]
+
+[config.app]
+# The app's data/config.json (NOSTRBLOG_DATA_DIR points the server at this
+# directory). npub/bootstrap_relays arrive as optional install inputs
+# (`install-npk --set npub=... --set bootstrap_relays=...`); omitted inputs
+# render null / [] and the app falls back to its built-in relay defaults.
+destination = "/var/lib/nostr_blog/config.json"
+owner = "nostr_blog"
+group = "nostr_blog"
+mode = 0o640
+template_content = '''{"npub": {{ npub | default(none, true) | tojson }}, "bootstrap_relays": {{ (bootstrap_relays | default("", true)).split(",") | map("trim") | select() | list | tojson }}}'''
+
+[web]
+# No domain here on purpose: [web].domain is an install-time parameter
+# (nostrhost app install-npk --domain ...), not part of the signed content.
+# full_domain: the SSR app serves its own routes (/about, /api/...) from the
+# domain root and cannot share a domain with a subpath app.
+path = "/"
+full_domain = true
+upstream = "127.0.0.1:4321"
+auth = "none"
+https = "automatic"
+
+[permissions.main]
+url = "/"
+allowed = ["all_users"]
+auth_request = false
+
+[health]
+type = "http"
+path = "/"
+timeout = 10
+retries = 2
+
+[backup]
+# Only server-side state: the install tree is re-synced from the .npk.
+paths = ["/var/lib/nostr_blog"]
+database = false
+
+[install_inputs.npub]
+type = "string"
+bind = "config.context"
+required = false
+label = "Publisher npub"
+description = "Owner npub written into data/config.json (optional; the site stays readable without it)."
+constraints = { config = "app", key = "npub" }
+
+[install_inputs.bootstrap_relays]
+type = "string"
+bind = "config.context"
+required = false
+label = "Bootstrap relays"
+description = "Comma-separated relay URLs the site loads posts from (optional; defaults to the built-in relay set)."
+constraints = { config = "app", key = "bootstrap_relays" }
