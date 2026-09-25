@@ -18,6 +18,20 @@ This is the multi-app, npack-distributed sibling of the per-app
 | [nostr_blog](apps/nostr_blog/) | 0.2.0 | <https://github.com/imattau/nostr-blog> |
 | [write_nostr](apps/write_nostr/) | 0.4.4 | <https://github.com/imattau/write_nostr> |
 
+## Publisher identity
+
+Every release in this repository is signed by one dedicated publisher key.
+To trust it when resolving or installing (npack's `--trusted-publisher`
+flag), copy:
+
+```text
+npub1uzcxfn34hhxxv46fczyp3ugu5ndump29v4evsez2dzcmrete3qfs5ul0ru
+e0b064ce35bdcc665749c08818f11ca4dbcd85456572c8644a68b1b1e5798813
+```
+
+The first line is the npub (bech32), the second the same key in hex —
+which is the form stored in the CI variable `NOSTR_PUBLISHER`.
+
 ## How it works
 
 ```text
@@ -96,10 +110,8 @@ hybrid staged store flow and the native post-install model.
 
 Repository configuration mirrors the npack release workflow:
 
-- Variable `NOSTR_PUBLISHER` — the dedicated publisher public key:
-  `npub1uzcxfn34hhxxv46fczyp3ugu5ndump29v4evsez2dzcmrete3qfs5ul0ru`
-  (hex `e0b064ce35bdcc665749c08818f11ca4dbcd85456572c8644a68b1b1e5798813`,
-  which is what the CI variable stores).
+- Variable `NOSTR_PUBLISHER` — the dedicated publisher public key, in hex
+  (see "Publisher identity" near the top for both forms).
 - Variables `NOSTR_RELAYS`, `NOSTR_BLOSSOM_SERVERS` — one URL per line.
 - Secret `NOSTR_SECRET_KEY` at repository level; the wrappers pass it to the
   core with `secrets: inherit`, and the core's publish job runs under the
