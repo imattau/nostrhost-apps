@@ -96,7 +96,10 @@ hybrid staged store flow and the native post-install model.
 
 Repository configuration mirrors the npack release workflow:
 
-- Variable `NOSTR_PUBLISHER` — the dedicated publisher public key.
+- Variable `NOSTR_PUBLISHER` — the dedicated publisher public key:
+  `npub1uzcxfn34hhxxv46fczyp3ugu5ndump29v4evsez2dzcmrete3qfs5ul0ru`
+  (hex `e0b064ce35bdcc665749c08818f11ca4dbcd85456572c8644a68b1b1e5798813`,
+  which is what the CI variable stores).
 - Variables `NOSTR_RELAYS`, `NOSTR_BLOSSOM_SERVERS` — one URL per line.
 - Secret `NOSTR_SECRET_KEY` at repository level; the wrappers pass it to the
   core with `secrets: inherit`, and the core's publish job runs under the
