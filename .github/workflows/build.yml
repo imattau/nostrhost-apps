@@ -40,7 +40,7 @@ permissions:
   contents: write
 
 env:
-  NPACK_REF: v0.4.1 # npack release the fork pins; see nostrhost forks/npack
+  NPACK_REF: v0.4.2 # npack release the fork pins; see nostrhost forks/npack
 
 jobs:
   list:
