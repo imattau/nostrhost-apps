@@ -21,16 +21,18 @@ This is the multi-app, npack-distributed sibling of the per-app
 ## Publisher identity
 
 Every release in this repository is signed by one dedicated publisher key.
-To trust it when resolving or installing (npack's `--trusted-publisher`
-flag), copy:
+Use whichever form you need — the npub:
 
 ```text
 npub1uzcxfn34hhxxv46fczyp3ugu5ndump29v4evsez2dzcmrete3qfs5ul0ru
-e0b064ce35bdcc665749c08818f11ca4dbcd85456572c8644a68b1b1e5798813
 ```
 
-The first line is the npub (bech32), the second the same key in hex —
-which is the form stored in the CI variable `NOSTR_PUBLISHER`.
+or the same key in hex (what `NOSTR_PUBLISHER` stores, and what npack's
+`--trusted-publisher` flag takes):
+
+```text
+e0b064ce35bdcc665749c08818f11ca4dbcd85456572c8644a68b1b1e5798813
+```
 
 ## How it works
 
